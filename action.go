@@ -143,6 +143,11 @@ func (st *State) Log(msg string) {
 	st.MsgLogger(msg)
 }
 
+// Logf logs a formatted message to the MsgLogger if present.
+func (st *State) Logf(f string, v ...interface{}) {
+	st.Log(fmt.Sprintf(f, v...))
+}
+
 // Error reports an error to the ErrorLogger if present.
 func (st *State) Error(err error) {
 	if st.ErrorLogger == nil {
