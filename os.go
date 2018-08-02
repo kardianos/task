@@ -9,8 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/google/shlex"
 )
 
 // Env sets one or more environment variables.
@@ -83,18 +81,6 @@ func ExecStreamOut(executable string, args ...string) Action {
 		}
 		return nil
 	})
-}
-
-// ExecLine runs an executable, but parses the line and separates out the parts.
-func ExecLine(ex ExecFunc, line string) Action {
-	all, err := shlex.Split(line)
-	if err != nil {
-		panic(err)
-	}
-	if len(all) == 0 {
-		panic("no values to exec")
-	}
-	return ex(all[0], all[1:]...)
 }
 
 // WriteFileStdout writes the given file from the "stdout" bucket variable assuming it is a []byte.
