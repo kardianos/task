@@ -59,6 +59,8 @@ const (
 	BranchUnset Branch = iota
 	BranchTrue
 	BranchFalse
+	BranchCommit
+	BranchRollback
 
 	// BranchCustom is the smallest custom branch value that may be used.
 	BranchCustom Branch = 1024
