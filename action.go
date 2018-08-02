@@ -221,7 +221,7 @@ func (sc *script) RunAction(ctx context.Context, st *State, a Action) error {
 	if st.Policy&PolicySkipRollback != 0 {
 		return err
 	}
-	rberr := sc.rollback.Run(ctx, st, sc)
+	rberr := sc.rollback.Run(context.Background(), st, sc)
 	if rberr == nil {
 		return err
 	}
