@@ -221,12 +221,12 @@ func (sc *script) RunAction(ctx context.Context, st *State, a Action) error {
 	if st.Policy&PolicySkipRollback != 0 {
 		return err
 	}
+	if err == nil {
+		return err
+	}
 	rberr := sc.rollback.Run(context.Background(), st, sc)
 	if rberr == nil {
 		return err
-	}
-	if err == nil {
-		return fmt.Errorf("rollback failed: %v", rberr)
 	}
 	return fmt.Errorf("%v, rollback failed: %v", err, rberr)
 }
