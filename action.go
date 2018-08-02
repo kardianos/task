@@ -1,5 +1,9 @@
-// Package task handles running a sequence of tasks that may be
-// conditionally added to.
+// Copyright 2018 Daniel Theophanes. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// Package task handles running a sequence of tasks. State context
+// is separated from script actions. Native context support.
 package task
 
 import (
@@ -23,9 +27,10 @@ func (f ActionFunc) Run(ctx context.Context, st *State, sc Script) error {
 	return f(ctx, st, sc)
 }
 
-// Script is a list of actions.
+// Script is a list of actions. If an action
 type Script interface {
-	Add(a ...Action) Script
+	Add(a ...Action)
+	AddRollback(a ...Action)
 	RunAction(ctx context.Context, st *State, a Action) error
 	Run(ctx context.Context, st *State, parent Script) error
 }
@@ -33,6 +38,8 @@ type Script interface {
 type script struct {
 	at   int
 	list []Action
+
+	rollback *script
 }
 
 // ScriptAdd creates a script and appends the given actions to it.
@@ -43,12 +50,16 @@ func ScriptAdd(a ...Action) Script {
 }
 
 // Add creates a script if nil and appends the given actions to it.
-func (sc *script) Add(a ...Action) Script {
-	if sc == nil {
-		sc = &script{}
-	}
+func (sc *script) Add(a ...Action) {
 	sc.list = append(sc.list, a...)
-	return sc
+}
+
+// AddRollback adds actions to be done on failure.
+func (sc *script) AddRollback(a ...Action) {
+	if sc.rollback == nil {
+		sc.rollback = &script{}
+	}
+	sc.rollback.Add(a...)
 }
 
 // Branch represents a branch condition used in Switch.
@@ -69,18 +80,27 @@ const (
 // Policy describes the current error policy.
 type Policy byte
 
+// Policies may be combined together. The default policy is to fail on error
+// and run any rollback acitions. If Continue is selected then normal execution
+// will proceed and a rollback will not be triggered. If Log is selected
+// any error will be logged to the ErrorLogger. If SkipRollback is selected
+// then a failure will not trigger the rollback actions. If both Continue
+// and SkipRollbackk are selected, execution will continue and SkipRollback
+// will be ignored.
 const (
-	// PolicyFail will stop execution.
-	PolicyFail Policy = iota
-
-	// PolicyError will print to the error function and continue.
-	PolicyError
-
-	// PolicyLog will print to the log function and continue.
+	PolicyFail     Policy = 0
+	PolicyContinue Policy = 1 << iota
 	PolicyLog
+	PolicySkipRollback
 
-	// PolicyQuiet will continue execution.
-	PolicyQuiet
+	// Fail
+	// Fail + Log
+	// Fail + Log + SkipRollback
+	// Fail + SkipRollback
+	// Continue
+	// Continue + Log
+	//
+	// Continue + SkipRollback will ignore skip rollback.
 )
 
 // State of the current task.
@@ -115,12 +135,15 @@ func DefaultState() *State {
 	}
 }
 
+// Log a message to the MsgLogger if present.
 func (st *State) Log(msg string) {
 	if st.MsgLogger == nil {
 		return
 	}
 	st.MsgLogger(msg)
 }
+
+// Error reports an error to the ErrorLogger if present.
 func (st *State) Error(err error) {
 	if st.ErrorLogger == nil {
 		return
@@ -172,6 +195,9 @@ func (st *State) Delete(name string) {
 
 // RunAction runs the given action in the current script's context.
 func (sc *script) RunAction(ctx context.Context, st *State, a Action) error {
+	if sc == nil {
+		return nil
+	}
 	select {
 	default:
 	case <-ctx.Done():
@@ -181,20 +207,23 @@ func (sc *script) RunAction(ctx context.Context, st *State, a Action) error {
 	if err == nil {
 		return nil
 	}
-	switch st.Policy {
-	default:
-		return fmt.Errorf("unknown policy: %v", st.Policy)
-	case PolicyFail:
-		return err
-	case PolicyError:
+	if st.Policy&PolicyLog != 0 {
 		st.Error(err)
-		return nil
-	case PolicyLog:
-		st.Log(err.Error())
-		return nil
-	case PolicyQuiet:
-		return nil
 	}
+	if st.Policy&PolicyContinue != 0 {
+		err = nil
+	}
+	if st.Policy&PolicySkipRollback != 0 {
+		return err
+	}
+	rberr := sc.rollback.Run(ctx, st, sc)
+	if rberr == nil {
+		return err
+	}
+	if err == nil {
+		return fmt.Errorf("rollback failed: %v", rberr)
+	}
+	return fmt.Errorf("%v, rollback failed: %v", err, rberr)
 }
 
 func (sc *script) runNext(ctx context.Context, st *State) error {
@@ -208,6 +237,9 @@ func (sc *script) runNext(ctx context.Context, st *State) error {
 
 // Run the items in the method script. The parent script is ignored.
 func (sc *script) Run(ctx context.Context, st *State, parent Script) error {
+	if sc == nil {
+		return nil
+	}
 	var err error
 	for {
 		err = sc.runNext(ctx, st)

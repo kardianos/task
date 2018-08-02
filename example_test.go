@@ -1,3 +1,7 @@
+// Copyright 2018 Daniel Theophanes. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package task_test
 
 import (
@@ -24,8 +28,8 @@ func ExampleCommand() {
 		},
 		Commands: []*task.Command{
 			{Name: "run1", Usage: "run the first one here", Action: task.ScriptAdd(
-				task.ExecLine(task.ExecStreamOut, "ps -A"),
-				task.ExecLine(task.ExecStreamOut, "ls -la"),
+				task.ExecStreamOut("ps", "-A"),
+				task.ExecStreamOut("ls", "-la"),
 			)},
 			{
 				Name: "run2", Usage: "run the second one here",

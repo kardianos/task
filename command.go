@@ -1,3 +1,7 @@
+// Copyright 2018 Daniel Theophanes. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package task
 
 import (
@@ -30,6 +34,8 @@ type Flag struct {
 // FlagType is set in Flag and determins how the value is parsed.
 type FlagType byte
 
+// FlagType options. If a default is present the flag type may be left as
+// Auto to choose the parse type based on the default type.
 const (
 	FlagAuto FlagType = iota
 	FlagString
