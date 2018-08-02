@@ -1,5 +1,3 @@
-// Package task handles running a sequence of tasks that may be
-// conditionally added to.
 package task
 
 import (

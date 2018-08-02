@@ -8,7 +8,7 @@ import (
 	"bitbucket.org/kardianos/task"
 )
 
-func ExampleMain() {
+func ExampleCommand() {
 	showVar := func(name string) task.Action {
 		return task.ActionFunc(func(ctx context.Context, st *task.State, sc task.Script) error {
 			st.Log(fmt.Sprintf("var %s = %[2]v (%[2]T)", name, st.Get(name)))
