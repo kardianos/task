@@ -137,6 +137,11 @@ func copyFile(fi os.FileInfo, oldpath, newpath string) error {
 	}
 	defer old.Close()
 
+	err = os.MkdirAll(filepath.Dir(newpath), fi.Mode()|0700)
+	if err != nil {
+		return err
+	}
+
 	new, err := os.OpenFile(newpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fi.Mode())
 	if err != nil {
 		return err
