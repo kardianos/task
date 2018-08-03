@@ -257,6 +257,15 @@ func (sc *script) Run(ctx context.Context, st *State, parent Script) error {
 	}
 }
 
+// AddRollback adds rollback actions to the current Script. Rollback actions
+// are only executed on failure under non-Continue policies.
+func AddRollback(a ...Action) Action {
+	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		sc.AddRollback(a...)
+		return nil
+	})
+}
+
 // Switch will run the f action, read the state branch value, and then
 // execute the given action in sw.
 func Switch(f Action, sw map[Branch]Action) Action {
