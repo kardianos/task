@@ -104,7 +104,12 @@ func Delete(filename string) Action {
 // Move file.
 func Move(old, new string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		return os.Rename(st.Filepath(old), st.Filepath(new))
+		np := st.Filepath(new)
+		err := os.MkdirAll(filepath.Dir(np), 0700)
+		if err != nil {
+			return err
+		}
+		return os.Rename(st.Filepath(old), np)
 	})
 }
 
