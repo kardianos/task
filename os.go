@@ -73,7 +73,9 @@ func Exec(executable string, args ...string) Action {
 }
 
 // Pipe sets stdin to the value of stdout. The stdout is removed.
-func Pipe(ctx context.Context, st *State, sc Script) error {
+var Pipe = ActionFunc(pipe)
+
+func pipe(ctx context.Context, st *State, sc Script) error {
 	stdin := []byte{}
 	if stdout, is := st.Default("stdout", []byte{}).([]byte); is {
 		stdin = stdout
