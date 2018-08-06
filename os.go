@@ -5,6 +5,7 @@
 package task
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -54,6 +55,10 @@ func Exec(executable string, args ...string) Action {
 		cmd := exec.CommandContext(ctx, executable, args...)
 		cmd.Env = st.Env
 		cmd.Dir = st.Dir
+		stdin, _ := st.Default("stdin", []byte{}).([]byte)
+		if len(stdin) > 0 {
+			cmd.Stdin = bytes.NewReader(stdin)
+		}
 		out, err := cmd.Output()
 		st.Set("success", cmd.ProcessState.Success())
 		st.Set("stdout", out)
@@ -67,12 +72,27 @@ func Exec(executable string, args ...string) Action {
 	})
 }
 
+// Pipe sets stdin to the value of stdout. The stdout is removed.
+func Pipe(ctx context.Context, st *State, sc Script) error {
+	stdin := []byte{}
+	if stdout, is := st.Default("stdout", []byte{}).([]byte); is {
+		stdin = stdout
+	}
+	st.Set("stdin", stdin)
+	st.Delete("stdout")
+	return nil
+}
+
 // ExecStreamOut runs an executable but streams the output to stderr and stdout.
 func ExecStreamOut(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		cmd := exec.CommandContext(ctx, executable, args...)
 		cmd.Env = st.Env
 		cmd.Dir = st.Dir
+		stdin, _ := st.Default("stdin", []byte{}).([]byte)
+		if len(stdin) > 0 {
+			cmd.Stdin = bytes.NewReader(stdin)
+		}
 		cmd.Stdout = st.Stdout
 		cmd.Stderr = st.Stderr
 		err := cmd.Run()
