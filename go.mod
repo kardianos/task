@@ -1,1 +1,1 @@
-module bitbucket.org/kardianos/task
+module github.com/kardianos/task
