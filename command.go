@@ -205,6 +205,12 @@ func (c *Command) Exec(args []string) Action {
 				continue
 			}
 			if a[0] != '-' {
+				for _, fs := range flagLookup {
+					if fs.used {
+						continue
+					}
+					fs.setDefault(st)
+				}
 				// This is a subcommand.
 				cmd, ok := cmdLookup[a]
 				if !ok {

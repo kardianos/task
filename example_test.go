@@ -25,6 +25,7 @@ func ExampleCommand() {
 		Usage: "Example Commander",
 		Flags: []*task.Flag{
 			{Name: "f1", Usage: "set the current f1", Default: "ghi"},
+			{Name: "f2", Usage: "set the current f2", Default: "nmo"},
 		},
 		Commands: []*task.Command{
 			{Name: "run1", Usage: "run the first one here", Action: task.ScriptAdd(
@@ -38,6 +39,7 @@ func ExampleCommand() {
 				},
 				Action: task.ScriptAdd(
 					showVar("f1"),
+					showVar("f2"),
 					showVar("tf"),
 				),
 			},
@@ -62,11 +64,13 @@ func ExampleCommand() {
 	// invalid flag -help
 	// cmder - Example Commander
 	// 	-f1 - set the current f1 (ghi)
+	// 	-f2 - set the current f2 (nmo)
 	//
 	// 	run1 - run the first one here
 	// 	run2 - run the second one here
 	// ---
 	// var f1 = xyz (string)
+	// var f2 = nmo (string)
 	// var tf = true (bool)
 
 }
