@@ -275,6 +275,9 @@ func (c *Command) helpError(f string, v ...interface{}) error {
 			msg.WriteString(" - ")
 			msg.WriteString(fl.Usage)
 		}
+		if fl.Default != nil {
+			fmt.Fprintf(msg, " (%v)", fl.Default)
+		}
 		msg.WriteString("\n")
 	}
 	msg.WriteString("\n")

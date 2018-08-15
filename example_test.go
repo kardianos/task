@@ -24,7 +24,7 @@ func ExampleCommand() {
 		Name:  "cmder",
 		Usage: "Example Commander",
 		Flags: []*task.Flag{
-			{Name: "f1", Usage: "set the current f1"},
+			{Name: "f1", Usage: "set the current f1", Default: "ghi"},
 		},
 		Commands: []*task.Command{
 			{Name: "run1", Usage: "run the first one here", Action: task.ScriptAdd(
@@ -50,6 +50,8 @@ func ExampleCommand() {
 	sc := task.ScriptAdd(cmd.Exec(args))
 	ctx := context.Background()
 
+	fmt.Fprintf(os.Stdout, cmd.Exec([]string{"-help"}).Run(ctx, st, nil).Error())
+	fmt.Println("---")
 	err := sc.Run(ctx, st, nil)
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
@@ -57,6 +59,14 @@ func ExampleCommand() {
 	}
 
 	// Output:
+	// invalid flag -help
+	// cmder - Example Commander
+	// 	-f1 - set the current f1 (ghi)
+	//
+	// 	run1 - run the first one here
+	// 	run2 - run the second one here
+	// ---
 	// var f1 = xyz (string)
 	// var tf = true (bool)
+
 }
