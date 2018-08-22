@@ -14,6 +14,12 @@ import (
 
 // Command represents an Action that may be invoked with a name.
 // Flags will be mapped to State bucket values.
+// Extra arguments at the end of a command chain will be passed to the state as
+// "args []string". To pass arguments to a command that has sub-commands, first
+// pass in "--" then pass in the arguments.
+//
+//  exec cmd arg1 arg2 # cmd has no sub-commands.
+//  exec cmd -- arg1 arg2 # cmd has one or more sub-commands.
 type Command struct {
 	Name     string
 	Usage    string
@@ -185,11 +191,13 @@ func (c *Command) Exec(args []string) Action {
 			}
 			flagLookup[fl.Name] = fs
 		}
+
 		// First parse any flags.
 		// The first non-flag seen is a sub-command, stop after the cmd is found.
 		var nextFlag *flagStatus
 		for len(args) > 0 {
 			a := args[0]
+			prevArgs := args
 			args = args[1:]
 
 			if nextFlag != nil {
@@ -205,21 +213,32 @@ func (c *Command) Exec(args []string) Action {
 				continue
 			}
 			if a[0] != '-' {
+				if len(cmdLookup) == 0 {
+					// This is an argument.
+					st.Set("args", prevArgs)
+					break
+				}
+				// This is a subcommand.
 				for _, fs := range flagLookup {
 					if fs.used {
 						continue
 					}
 					fs.setDefault(st)
 				}
-				// This is a subcommand.
 				cmd, ok := cmdLookup[a]
 				if !ok {
 					return c.helpError("invalid command %q", a)
 				}
 				return cmd.Exec(args).Run(ctx, st, sc)
+
+			}
+			a = a[1:]
+			if a == "-" { // "--"
+				st.Set("args", args)
+				break
 			}
 			// This is a flag.
-			nameValue := strings.SplitN(a[1:], "=", 2)
+			nameValue := strings.SplitN(a, "=", 2)
 			fl, ok := flagLookup[nameValue[0]]
 			if !ok {
 				return c.helpError("invalid flag -%s", nameValue[0])
