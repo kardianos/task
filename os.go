@@ -8,12 +8,13 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/kardianos/task/fsop"
 )
 
 // Env sets one or more environment variables.
@@ -139,64 +140,6 @@ func Move(old, new string) Action {
 // if only returns true.
 func Copy(old, new string, only func(p string) bool) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		return copyFileFolder(st.Filepath(old), st.Filepath(new), only)
+		return fsop.Copy(st.Filepath(old), st.Filepath(new), only)
 	})
-}
-
-func copyFileFolder(oldpath, newpath string, only func(p string) bool) error {
-	if only != nil && !only(oldpath) {
-		return nil
-	}
-	fi, err := os.Stat(oldpath)
-	if err != nil {
-		return err
-	}
-	if fi.IsDir() {
-		return copyFolder(fi, oldpath, newpath, only)
-	}
-	return copyFile(fi, oldpath, newpath)
-}
-
-func copyFile(fi os.FileInfo, oldpath, newpath string) error {
-	old, err := os.Open(oldpath)
-	if err != nil {
-		return err
-	}
-	defer old.Close()
-
-	err = os.MkdirAll(filepath.Dir(newpath), fi.Mode()|0700)
-	if err != nil {
-		return err
-	}
-
-	new, err := os.OpenFile(newpath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, fi.Mode())
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(new, old)
-	cerr := new.Close()
-	if cerr != nil {
-		return cerr
-	}
-
-	return err
-}
-
-func copyFolder(fi os.FileInfo, oldpath, newpath string, only func(p string) bool) error {
-	err := os.MkdirAll(newpath, fi.Mode())
-	if err != nil {
-		return err
-	}
-	list, err := ioutil.ReadDir(oldpath)
-	if err != nil {
-		return err
-	}
-
-	for _, item := range list {
-		err = copyFileFolder(filepath.Join(oldpath, item.Name()), filepath.Join(newpath, item.Name()), only)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
