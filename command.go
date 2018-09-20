@@ -75,6 +75,8 @@ func (fs *flagStatus) init() error {
 		switch fl.Default.(type) {
 		case string:
 			fl.Type = FlagString
+		case bool:
+			fl.Type = FlagBool
 		case int64:
 			fl.Type = FlagInt64
 		case int32:
