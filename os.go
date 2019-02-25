@@ -159,6 +159,9 @@ func Copy(old, new string, only func(p string, st *State) bool) Action {
 		old = expandEnv(old, st)
 		new = expandEnv(new, st)
 		return fsop.Copy(st.Filepath(old), st.Filepath(new), func(p string) bool {
+			if only == nil {
+				return true
+			}
 			return only(p, st)
 		})
 	})
