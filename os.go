@@ -125,6 +125,7 @@ func ExecStreamOut(executable string, args ...string) Action {
 // WriteFileStdout writes the given file from the "stdout" bucket variable assuming it is a []byte.
 func WriteFileStdout(filename string, mode os.FileMode) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		filename = expandEnv(filename, st)
 		return ioutil.WriteFile(st.Filepath(filename), st.Default("stdout", []byte{}).([]byte), mode)
 	})
 }
@@ -132,6 +133,7 @@ func WriteFileStdout(filename string, mode os.FileMode) Action {
 // Delete file.
 func Delete(filename string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		filename = expandEnv(filename, st)
 		return os.RemoveAll(st.Filepath(filename))
 	})
 }
@@ -139,6 +141,8 @@ func Delete(filename string) Action {
 // Move file.
 func Move(old, new string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		old = expandEnv(old, st)
+		new = expandEnv(new, st)
 		np := st.Filepath(new)
 		err := os.MkdirAll(filepath.Dir(np), 0700)
 		if err != nil {
@@ -152,6 +156,8 @@ func Move(old, new string) Action {
 // if only returns true.
 func Copy(old, new string, only func(p string, st *State) bool) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		old = expandEnv(old, st)
+		new = expandEnv(new, st)
 		return fsop.Copy(st.Filepath(old), st.Filepath(new), func(p string) bool {
 			return only(p, st)
 		})
