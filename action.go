@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Action is a unit of work that gets run.
@@ -105,7 +106,7 @@ const (
 
 // State of the current task.
 type State struct {
-	Env    []string
+	Env    map[string]string
 	Dir    string // Current working directory.
 	Stdout io.Writer
 	Stderr io.Writer
@@ -121,8 +122,17 @@ type State struct {
 // DefaultState creates a new states with the current OS env.
 func DefaultState() *State {
 	wd, _ := os.Getwd()
+	envList := os.Environ()
+	envMap := make(map[string]string, len(envList))
+	for _, env := range envList {
+		ss := strings.SplitN(env, "=", 2)
+		if len(ss) != 2 {
+			continue
+		}
+		envMap[ss[0]] = ss[1]
+	}
 	return &State{
-		Env:    os.Environ(),
+		Env:    envMap,
 		Dir:    wd,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,

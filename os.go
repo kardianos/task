@@ -18,31 +18,21 @@ import (
 )
 
 // Env sets one or more environment variables.
+// To delete an environment variable just include the key, no equals.
 //    Env("GOOS=linux", "GOARCH=arm64")
 func Env(env ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		key := func(s string) string {
-			return strings.SplitN(s, "=", 2)[0]
+		if st.Env == nil {
+			st.Env = make(map[string]string, len(env))
 		}
-		var out []string
-		for _, item := range env {
-			out = append(out, item)
-		}
-		for _, stItem := range st.Env {
-			osKey := key(stItem)
-			found := false
-			for _, item := range env {
-				itemKey := key(item)
-				if itemKey == osKey {
-					found = true
-					break
-				}
+		for _, e := range env {
+			ss := strings.SplitN(e, "=", 2)
+			if len(ss) != 2 {
+				delete(st.Env, ss[0])
+				continue
 			}
-			if !found {
-				out = append(out, stItem)
-			}
+			st.Env[ss[0]] = ss[1]
 		}
-		st.Env = out
 		return nil
 	})
 }
@@ -54,7 +44,11 @@ type ExecFunc func(executable string, args ...string) Action
 func Exec(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		cmd := exec.CommandContext(ctx, executable, args...)
-		cmd.Env = st.Env
+		envList := make([]string, 0, len(st.Env))
+		for key, value := range st.Env {
+			envList = append(envList, key+"="+value)
+		}
+		cmd.Env = envList
 		cmd.Dir = st.Dir
 		stdin, _ := st.Default("stdin", []byte{}).([]byte)
 		if len(stdin) > 0 {
@@ -90,7 +84,11 @@ func pipe(ctx context.Context, st *State, sc Script) error {
 func ExecStreamOut(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		cmd := exec.CommandContext(ctx, executable, args...)
-		cmd.Env = st.Env
+		envList := make([]string, 0, len(st.Env))
+		for key, value := range st.Env {
+			envList = append(envList, key+"="+value)
+		}
+		cmd.Env = envList
 		cmd.Dir = st.Dir
 		stdin, _ := st.Default("stdin", []byte{}).([]byte)
 		if len(stdin) > 0 {
@@ -138,8 +136,10 @@ func Move(old, new string) Action {
 
 // Copy file or folder recursively. If only is present, only copy path
 // if only returns true.
-func Copy(old, new string, only func(p string) bool) Action {
+func Copy(old, new string, only func(p string, st *State) bool) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		return fsop.Copy(st.Filepath(old), st.Filepath(new), only)
+		return fsop.Copy(st.Filepath(old), st.Filepath(new), func(p string) bool {
+			return only(p, st)
+		})
 	})
 }
