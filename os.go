@@ -37,12 +37,22 @@ func Env(env ...string) Action {
 	})
 }
 
+func expandEnv(s string, st *State) string {
+	return os.Expand(s, func(key string) string {
+		return st.Env[key]
+	})
+}
+
 // ExecFunc is the standard executable function type.
 type ExecFunc func(executable string, args ...string) Action
 
 // Exec runs an executable. Sets the "stdout" bucket variable as a []byte.
 func Exec(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		executable = expandEnv(executable, st)
+		for i, a := range args {
+			args[i] = expandEnv(a, st)
+		}
 		cmd := exec.CommandContext(ctx, executable, args...)
 		envList := make([]string, 0, len(st.Env))
 		for key, value := range st.Env {
@@ -83,6 +93,10 @@ func pipe(ctx context.Context, st *State, sc Script) error {
 // ExecStreamOut runs an executable but streams the output to stderr and stdout.
 func ExecStreamOut(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		executable = expandEnv(executable, st)
+		for i, a := range args {
+			args[i] = expandEnv(a, st)
+		}
 		cmd := exec.CommandContext(ctx, executable, args...)
 		envList := make([]string, 0, len(st.Env))
 		for key, value := range st.Env {
