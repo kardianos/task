@@ -119,9 +119,8 @@ type State struct {
 	bucket map[string]interface{}
 }
 
-// DefaultState creates a new states with the current OS env.
-func DefaultState() *State {
-	wd, _ := os.Getwd()
+// Environ calls os.Environ and maps it to key value pairs.
+func Environ() map[string]string {
 	envList := os.Environ()
 	envMap := make(map[string]string, len(envList))
 	for _, env := range envList {
@@ -131,8 +130,14 @@ func DefaultState() *State {
 		}
 		envMap[ss[0]] = ss[1]
 	}
+	return envMap
+}
+
+// DefaultState creates a new states with the current OS env.
+func DefaultState() *State {
+	wd, _ := os.Getwd()
 	return &State{
-		Env:    envMap,
+		Env:    Environ(),
 		Dir:    wd,
 		Stdout: os.Stdout,
 		Stderr: os.Stderr,
