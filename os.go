@@ -65,14 +65,15 @@ func Exec(executable string, args ...string) Action {
 			cmd.Stdin = bytes.NewReader(stdin)
 		}
 		out, err := cmd.Output()
-		st.Set("success", cmd.ProcessState.Success())
 		st.Set("stdout", out)
 		if err != nil {
+			st.Set("success", false)
 			if ec, ok := err.(*exec.ExitError); ok {
 				return fmt.Errorf("%s %q failed: %v\n%s", executable, args, err, ec.Stderr)
 			}
 			return err
 		}
+		st.Set("success", true)
 		return nil
 	})
 }
@@ -111,13 +112,14 @@ func ExecStreamOut(executable string, args ...string) Action {
 		cmd.Stdout = st.Stdout
 		cmd.Stderr = st.Stderr
 		err := cmd.Run()
-		st.Set("success", cmd.ProcessState.Success())
 		if err != nil {
+			st.Set("success", false)
 			if ec, ok := err.(*exec.ExitError); ok {
 				return fmt.Errorf("%s %q failed: %v\n%s", executable, args, err, ec.Stderr)
 			}
 			return err
 		}
+		st.Set("success", true)
 		return nil
 	})
 }
