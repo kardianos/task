@@ -130,6 +130,19 @@ func WriteFileStdout(filename string, mode os.FileMode) Action {
 	})
 }
 
+// ReadFileStdin reads the given file into the stdin bucket variable as a []byte.
+func ReadFileStdin(filename string, mode os.FileMode) Action {
+	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		filename = expandEnv(filename, st)
+		b, err := ioutil.ReadFile(st.Filepath(filename))
+		if err != nil {
+			return err
+		}
+		st.Set("stdin", b)
+		return nil
+	})
+}
+
 // Delete file.
 func Delete(filename string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {

@@ -7,6 +7,7 @@ package task_test
 import (
 	"context"
 	"fmt"
+	"time"
 	"os"
 
 	"github.com/kardianos/task"
@@ -51,14 +52,16 @@ func ExampleCommandFlags() {
 	st := task.DefaultState()
 	sc := task.ScriptAdd(cmd.Exec(args))
 	ctx := context.Background()
-
-	fmt.Fprintf(os.Stdout, cmd.Exec([]string{"-help"}).Run(ctx, st, nil).Error())
-	fmt.Println("---")
-	err := sc.Run(ctx, st, nil)
+	err := task.Start(ctx, time.Second * 3, func(ctx context.Context) error {
+		fmt.Fprintf(os.Stdout, cmd.Exec([]string{"-help"}).Run(ctx, st, nil).Error())
+		fmt.Println("---")
+		return sc.Run(ctx, st, nil)
+	})
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)
 	}
+
 
 	// Output:
 	// invalid flag -help
@@ -109,18 +112,18 @@ func ExampleCommandArgs() {
 		},
 	}
 
-	args := []string{"-f1", "xyz1", "run2", "abc123"} // os.Args[1:]
-	err := cmd.Exec(args).Run(context.Background(), task.DefaultState(), nil)
-	if err != nil {
-		fmt.Fprint(os.Stderr, err)
-		os.Exit(1)
-	}
+	err := task.Start(context.Background(), time.Second * 3, func(ctx context.Context) error {
+		args := []string{"-f1", "xyz1", "run2", "abc123"} // os.Args[1:]
+		err := cmd.Exec(args).Run(ctx, task.DefaultState(), nil)
+		if err != nil {
+			return err
+		}
+		fmt.Println("---")
 
-	fmt.Println("---")
-
-	// The "--" is required to pass arguments to commands that have sub-commands.
-	args = []string{"-f1", "xyz2", "run1", "--", "lights"} // os.Args[1:]
-	err = cmd.Exec(args).Run(context.Background(), task.DefaultState(), nil)
+		// The "--" is required to pass arguments to commands that have sub-commands.
+		args = []string{"-f1", "xyz2", "run1", "--", "lights"} // os.Args[1:]
+		return cmd.Exec(args).Run(ctx, task.DefaultState(), nil)
+	})
 	if err != nil {
 		fmt.Fprint(os.Stderr, err)
 		os.Exit(1)
