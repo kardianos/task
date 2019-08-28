@@ -36,6 +36,13 @@ type Script interface {
 	Run(ctx context.Context, st *State, parent Script) error
 }
 
+// Run is the entry point for actions. It is a short-cut
+// for ScriptAdd and Run.
+func Run(ctx context.Context, st *State, a Action) error {
+	sc := ScriptAdd(a)
+	return sc.Run(ctx, st, nil)
+}
+
 type script struct {
 	at   int
 	list []Action

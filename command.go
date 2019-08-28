@@ -6,6 +6,7 @@ package task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -181,6 +182,9 @@ func (fs *flagStatus) setDefault(st *State) {
 // Exec takes a command arguments and returns an Action, ready to be run.
 func (c *Command) Exec(args []string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		if sc == nil {
+			return errors.New("missing Script")
+		}
 		flagLookup := make(map[string]*flagStatus)
 		cmdLookup := make(map[string]*Command)
 		for _, cmd := range c.Commands {
@@ -231,8 +235,8 @@ func (c *Command) Exec(args []string) Action {
 				if !ok {
 					return c.helpError("invalid command %q", a)
 				}
-				return cmd.Exec(args).Run(ctx, st, sc)
-
+				sc.Add(cmd.Exec(args))
+				return nil
 			}
 			a = a[1:]
 			if a == "-" { // "--"
@@ -270,7 +274,8 @@ func (c *Command) Exec(args []string) Action {
 		if c.Action == nil {
 			return c.helpError("incorrect command")
 		}
-		return c.Action.Run(ctx, st, sc)
+		sc.Add(c.Action)
+		return nil
 	})
 }
 
