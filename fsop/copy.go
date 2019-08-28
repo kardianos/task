@@ -12,9 +12,12 @@ import (
 	"path/filepath"
 )
 
+// Only takes a path and returns true to include the file or folder.
+type Only func(p string) bool
+
 // Copy the the oldpath to the newpath. If only is not nil, only copy the
 // files and folders where only returns true.
-func Copy(oldpath, newpath string, only func(p string) bool) error {
+func Copy(oldpath, newpath string, only Only) error {
 	if only != nil && !only(oldpath) {
 		return nil
 	}
@@ -53,7 +56,7 @@ func copyFile(fi os.FileInfo, oldpath, newpath string) error {
 	return err
 }
 
-func copyFolder(fi os.FileInfo, oldpath, newpath string, only func(p string) bool) error {
+func copyFolder(fi os.FileInfo, oldpath, newpath string, only Only) error {
 	err := os.MkdirAll(newpath, fi.Mode())
 	if err != nil {
 		return err
