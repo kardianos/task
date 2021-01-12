@@ -25,6 +25,9 @@ func Env(env ...string) Action {
 		if st.Env == nil {
 			st.Env = make(map[string]string, len(env))
 		}
+		for i, e := range env {
+			env[i] = ExpandEnv(e, st)
+		}
 		for _, e := range env {
 			ss := strings.SplitN(e, "=", 2)
 			if len(ss) != 2 {
@@ -37,8 +40,24 @@ func Env(env ...string) Action {
 	})
 }
 
-func expandEnv(s string, st *State) string {
+// ExpandEnv will expand env vars from s and return the combined string.
+// Var names may take the form of "text${var}suffix".
+// The source of the value will first look for current state bucket,
+// then in the state Env.
+func ExpandEnv(s string, st *State) string {
 	return os.Expand(s, func(key string) string {
+		if st.bucket != nil {
+			if v, ok := st.bucket[key]; ok {
+				switch x := v.(type) {
+				case string:
+					return x
+				case nil:
+					// Nothing.
+				default:
+					return fmt.Sprint(x)
+				}
+			}
+		}
 		return st.Env[key]
 	})
 }
@@ -49,9 +68,9 @@ type ExecFunc func(executable string, args ...string) Action
 // Exec runs an executable. Sets the "stdout" bucket variable as a []byte.
 func Exec(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		executable = expandEnv(executable, st)
+		executable = ExpandEnv(executable, st)
 		for i, a := range args {
-			args[i] = expandEnv(a, st)
+			args[i] = ExpandEnv(a, st)
 		}
 		cmd := exec.CommandContext(ctx, executable, args...)
 		envList := make([]string, 0, len(st.Env))
@@ -94,9 +113,9 @@ func pipe(ctx context.Context, st *State, sc Script) error {
 // ExecStreamOut runs an executable but streams the output to stderr and stdout.
 func ExecStreamOut(executable string, args ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		executable = expandEnv(executable, st)
+		executable = ExpandEnv(executable, st)
 		for i, a := range args {
-			args[i] = expandEnv(a, st)
+			args[i] = ExpandEnv(a, st)
 		}
 		cmd := exec.CommandContext(ctx, executable, args...)
 		envList := make([]string, 0, len(st.Env))
@@ -127,7 +146,7 @@ func ExecStreamOut(executable string, args ...string) Action {
 // WriteFileStdout writes the given file from the "stdout" bucket variable assuming it is a []byte.
 func WriteFileStdout(filename string, mode os.FileMode) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		filename = expandEnv(filename, st)
+		filename = ExpandEnv(filename, st)
 		return ioutil.WriteFile(st.Filepath(filename), st.Default("stdout", []byte{}).([]byte), mode)
 	})
 }
@@ -135,7 +154,7 @@ func WriteFileStdout(filename string, mode os.FileMode) Action {
 // ReadFileStdin reads the given file into the stdin bucket variable as a []byte.
 func ReadFileStdin(filename string, mode os.FileMode) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		filename = expandEnv(filename, st)
+		filename = ExpandEnv(filename, st)
 		b, err := ioutil.ReadFile(st.Filepath(filename))
 		if err != nil {
 			return err
@@ -148,7 +167,7 @@ func ReadFileStdin(filename string, mode os.FileMode) Action {
 // Delete file.
 func Delete(filename string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		filename = expandEnv(filename, st)
+		filename = ExpandEnv(filename, st)
 		return os.RemoveAll(st.Filepath(filename))
 	})
 }
@@ -156,8 +175,8 @@ func Delete(filename string) Action {
 // Move file.
 func Move(old, new string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		old = expandEnv(old, st)
-		new = expandEnv(new, st)
+		old = ExpandEnv(old, st)
+		new = ExpandEnv(new, st)
 		np := st.Filepath(new)
 		err := os.MkdirAll(filepath.Dir(np), 0700)
 		if err != nil {
@@ -171,8 +190,8 @@ func Move(old, new string) Action {
 // if only returns true.
 func Copy(old, new string, only func(p string, st *State) bool) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		old = expandEnv(old, st)
-		new = expandEnv(new, st)
+		old = ExpandEnv(old, st)
+		new = ExpandEnv(new, st)
 		return fsop.Copy(st.Filepath(old), st.Filepath(new), func(p string) bool {
 			if only == nil {
 				return true
