@@ -318,6 +318,11 @@ func (c *Command) helpError(f string, v ...interface{}) error {
 		msg.WriteString("\t")
 		msg.WriteRune('-')
 		msg.WriteString(fl.Name)
+		if len(fl.ENV) > 0 {
+			msg.WriteString(" [")
+			msg.WriteString(fl.ENV)
+			msg.WriteString("]")
+		}
 		if len(fl.Usage) > 0 {
 			msg.WriteString(" - ")
 			msg.WriteString(fl.Usage)

@@ -72,7 +72,7 @@ func ExampleCommand() {
 	// cmder - Example Commander
 	// 	-f1 - set the current f1 (ghi)
 	// 	-f2 - set the current f2 (nmo)
-	// 	-f3 - set the current f3 (fhg)
+	// 	-f3 [CMDER_F3] - set the current f3 (fhg)
 	//
 	// 	run1 - run the first one here
 	// 	run2 - run the second one here
