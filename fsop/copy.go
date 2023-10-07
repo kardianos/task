@@ -7,7 +7,6 @@ package fsop
 
 import (
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 )
@@ -61,7 +60,7 @@ func copyFolder(fi os.FileInfo, oldpath, newpath string, only Only) error {
 	if err != nil {
 		return err
 	}
-	list, err := ioutil.ReadDir(oldpath)
+	list, err := os.ReadDir(oldpath)
 	if err != nil {
 		return err
 	}

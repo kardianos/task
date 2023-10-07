@@ -19,8 +19,8 @@ import (
 // "args []string". To pass arguments to a command that has sub-commands, first
 // pass in "--" then pass in the arguments.
 //
-//  exec cmd arg1 arg2 # cmd has no sub-commands.
-//  exec cmd -- arg1 arg2 # cmd has one or more sub-commands.
+//	exec cmd arg1 arg2 # cmd has no sub-commands.
+//	exec cmd -- arg1 arg2 # cmd has one or more sub-commands.
 type Command struct {
 	Name     string
 	Usage    string
@@ -32,7 +32,8 @@ type Command struct {
 // Flag represents values that may be set on comments.
 // Values will be mapped to State bucket values.
 type Flag struct {
-	Name    string
+	Name    string // Name of the flag.
+	ENV     string // Optional env var to read from if flag not present.
 	Usage   string
 	Default interface{}
 	Type    FlagType
@@ -62,8 +63,9 @@ func (ft FlagType) spaceValue() bool {
 }
 
 type flagStatus struct {
-	used bool
 	flag *Flag
+	used bool
+	env  bool
 }
 
 func (fs *flagStatus) init() error {
@@ -128,12 +130,18 @@ func (fs *flagStatus) init() error {
 	return nil
 }
 
-func (fs *flagStatus) set(st *State, vs string) error {
+func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 	fl := fs.flag
 	if fs.used {
-		return fmt.Errorf("flag -%s already declared", fl.Name)
+		setFromENV := !fromENV && fs.env
+		if !setFromENV {
+			return fmt.Errorf("flag -%s already declared", fl.Name)
+		}
 	}
 	fs.used = true
+	if fromENV {
+		fs.env = true
+	}
 	switch fl.Type {
 	default:
 		return fmt.Errorf("unknown flag type %v", fl.Type)
@@ -195,6 +203,13 @@ func (c *Command) Exec(args []string) Action {
 			if err := fs.init(); err != nil {
 				return err
 			}
+			if len(fs.flag.ENV) > 0 {
+				if v, ok := st.Env[fs.flag.ENV]; ok && len(v) > 0 {
+					if err := fs.set(st, v, true); err != nil {
+						return err
+					}
+				}
+			}
 			flagLookup[fl.Name] = fs
 		}
 
@@ -207,7 +222,7 @@ func (c *Command) Exec(args []string) Action {
 			args = args[1:]
 
 			if nextFlag != nil {
-				if err := nextFlag.set(st, a); err != nil {
+				if err := nextFlag.set(st, a, false); err != nil {
 					return err
 				}
 				nextFlag.used = true
@@ -258,7 +273,7 @@ func (c *Command) Exec(args []string) Action {
 			} else {
 				val = nameValue[1]
 			}
-			if err := fl.set(st, val); err != nil {
+			if err := fl.set(st, val, false); err != nil {
 				return err
 			}
 		}

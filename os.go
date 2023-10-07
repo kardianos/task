@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,7 +18,8 @@ import (
 
 // Env sets one or more environment variables.
 // To delete an environment variable just include the key, no equals.
-//    Env("GOOS=linux", "GOARCH=arm64")
+//
+//	Env("GOOS=linux", "GOARCH=arm64")
 func Env(env ...string) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		if st.Env == nil {
@@ -147,7 +147,7 @@ func ExecStreamOut(executable string, args ...string) Action {
 func WriteFileStdout(filename string, mode os.FileMode) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		filename = ExpandEnv(filename, st)
-		return ioutil.WriteFile(st.Filepath(filename), st.Default("stdout", []byte{}).([]byte), mode)
+		return os.WriteFile(st.Filepath(filename), st.Default("stdout", []byte{}).([]byte), mode)
 	})
 }
 
@@ -155,7 +155,7 @@ func WriteFileStdout(filename string, mode os.FileMode) Action {
 func ReadFileStdin(filename string, mode os.FileMode) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		filename = ExpandEnv(filename, st)
-		b, err := ioutil.ReadFile(st.Filepath(filename))
+		b, err := os.ReadFile(st.Filepath(filename))
 		if err != nil {
 			return err
 		}

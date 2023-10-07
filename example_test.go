@@ -13,7 +13,7 @@ import (
 	"github.com/kardianos/task"
 )
 
-func ExampleCommandFlags() {
+func ExampleCommand() {
 	showVar := func(name string) task.Action {
 		return task.ActionFunc(func(ctx context.Context, st *task.State, sc task.Script) error {
 			st.Log(fmt.Sprintf("var %s = %[2]v (%[2]T)", name, st.Get(name)))
@@ -27,6 +27,7 @@ func ExampleCommandFlags() {
 		Flags: []*task.Flag{
 			{Name: "f1", Usage: "set the current f1", Default: "ghi"},
 			{Name: "f2", Usage: "set the current f2", Default: "nmo"},
+			{Name: "f3", Usage: "set the current f3", Default: "fhg", ENV: "CMDER_F3"},
 		},
 		Commands: []*task.Command{
 			{Name: "run1", Usage: "run the first one here", Action: task.ScriptAdd(
@@ -41,6 +42,7 @@ func ExampleCommandFlags() {
 				Action: task.ScriptAdd(
 					showVar("f1"),
 					showVar("f2"),
+					showVar("f3"),
 					showVar("tf"),
 				),
 			},
@@ -50,6 +52,9 @@ func ExampleCommandFlags() {
 	args := []string{"-f1", "xyz", "run2", "-tf"} // os.Args[1:]
 
 	st := task.DefaultState()
+	st.Env = map[string]string{
+		"CMDER_F3": "sky",
+	}
 	ctx := context.Background()
 	err := task.Start(ctx, time.Second*3, func(ctx context.Context) error {
 		err := task.Run(ctx, st, cmd.Exec([]string{"-help"}))
@@ -67,17 +72,19 @@ func ExampleCommandFlags() {
 	// cmder - Example Commander
 	// 	-f1 - set the current f1 (ghi)
 	// 	-f2 - set the current f2 (nmo)
+	// 	-f3 - set the current f3 (fhg)
 	//
 	// 	run1 - run the first one here
 	// 	run2 - run the second one here
 	// ---
 	// var f1 = xyz (string)
 	// var f2 = nmo (string)
+	// var f3 = sky (string)
 	// var tf = true (bool)
 
 }
 
-func ExampleCommandArgs() {
+func ExampleCommand_Flags() {
 	showVar := func(name string) task.Action {
 		return task.ActionFunc(func(ctx context.Context, st *task.State, sc task.Script) error {
 			st.Log(fmt.Sprintf("var %s = %[2]v (%[2]T)", name, st.Get(name)))
