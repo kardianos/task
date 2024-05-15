@@ -88,30 +88,30 @@ func ExpandEnv(text any, st *State) string {
 // When passed to a function, resolves to the state variable name.
 type VAR string
 
-func outputSetup(name string, std any) (func(st *State) io.Writer, func(st *State)) {
+func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer, func(st *State)) {
 	switch s := std.(type) {
 	default:
 		panic(fmt.Sprintf("%s must be one of: nil, VAR, io.Writer, *[]byte", name))
 	case nil:
-		return func(st *State) io.Writer {
-				return nil
+		return func(st *State, def io.Writer) io.Writer {
+				return def
 			}, func(st *State) {
 			}
 	case VAR:
 		buf := &bytes.Buffer{}
-		return func(st *State) io.Writer {
+		return func(st *State, def io.Writer) io.Writer {
 				return buf
 			}, func(st *State) {
 				st.Set(string(s), buf.Bytes())
 			}
 	case io.Writer:
-		return func(st *State) io.Writer {
+		return func(st *State, def io.Writer) io.Writer {
 				return s
 			}, func(st *State) {
 			}
 	case *[]byte:
 		buf := &bytes.Buffer{}
-		return func(st *State) io.Writer {
+		return func(st *State, def io.Writer) io.Writer {
 				return &bytes.Buffer{}
 			}, func(st *State) {
 				*s = buf.Bytes()
@@ -123,11 +123,11 @@ func outputSetup(name string, std any) (func(st *State) io.Writer, func(st *Stat
 // stdout and stderr may be nil, VAR (state name stored as []byte), io.Writer, or *[]byte.
 func WithStdOutErr(stdout, stderr any, childScript Script) Action {
 	outPre, outPost := outputSetup("stdout", stdout)
-	errPre, errPost := outputSetup("stderr", stdout)
+	errPre, errPost := outputSetup("stderr", stderr)
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		oldStdout, oldStderr := st.Stdout, st.Stderr
-		st.Stdout = outPre(st)
-		st.Stderr = errPre(st)
+		st.Stdout = outPre(st, oldStdout)
+		st.Stderr = errPre(st, oldStderr)
 		err := childScript.Run(ctx, st, sc)
 		outPost(st)
 		errPost(st)
@@ -142,9 +142,11 @@ func WithStdCombined(std any, childScript Script) Action {
 	outPre, outPost := outputSetup("std", std)
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		oldStdout, oldStderr := st.Stdout, st.Stderr
-		w := outPre(st)
-		st.Stdout = w
-		st.Stderr = w
+		w := outPre(st, nil)
+		if w != nil {
+			st.Stdout = w
+			st.Stderr = w
+		}
 		err := childScript.Run(ctx, st, sc)
 		outPost(st)
 		st.Stdout, st.Stderr = oldStdout, oldStderr
@@ -218,6 +220,11 @@ func ExecStdin(stdin any, executable any, args ...any) Action {
 	})
 }
 
+func ensureDir(fn string) error {
+	dir, _ := filepath.Split(fn)
+	return os.MkdirAll(dir, 0700)
+}
+
 // WriteFile writes the given file from the input.
 // Input may be a VAR, []byte, string, or io.Reader.
 // The filename may be VAR or string.
@@ -229,6 +236,10 @@ func WriteFile(filename any, perm os.FileMode, input any) Action {
 		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 			fn := ExpandEnv(filename, st)
 			fn = st.Filepath(fn)
+			err := ensureDir(fn)
+			if err != nil {
+				return err
+			}
 			switch v := st.Get(string(i)).(type) {
 			default:
 				return fmt.Errorf("uknown type for %q: %#v", i, v)
@@ -252,17 +263,32 @@ func WriteFile(filename any, perm os.FileMode, input any) Action {
 	case string:
 		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 			fn := ExpandEnv(filename, st)
-			return os.WriteFile(st.Filepath(fn), []byte(i), perm)
+			fn = st.Filepath(fn)
+			err := ensureDir(fn)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(fn, []byte(i), perm)
 		})
 	case []byte:
 		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 			fn := ExpandEnv(filename, st)
-			return os.WriteFile(st.Filepath(fn), i, perm)
+			fn = st.Filepath(fn)
+			err := ensureDir(fn)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(fn, i, perm)
 		})
 	case io.Reader:
 		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 			fn := ExpandEnv(filename, st)
-			f, err := os.OpenFile(st.Filepath(fn), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+			fn = st.Filepath(fn)
+			err := ensureDir(fn)
+			if err != nil {
+				return err
+			}
+			f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 			if err != nil {
 				return err
 			}
@@ -285,7 +311,12 @@ func OpenFile(filename any, file any) Action {
 	case VAR:
 		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 			fn := ExpandEnv(filename, st)
-			fh, err := os.Open(st.Filepath(fn))
+			fn = st.Filepath(fn)
+			err := ensureDir(fn)
+			if err != nil {
+				return err
+			}
+			fh, err := os.Open(fn)
 			if err != nil {
 				return err
 			}
@@ -297,7 +328,12 @@ func OpenFile(filename any, file any) Action {
 	case *io.Closer:
 		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 			fn := ExpandEnv(filename, st)
-			fh, err := os.Open(st.Filepath(fn))
+			fn = st.Filepath(fn)
+			err := ensureDir(fn)
+			if err != nil {
+				return err
+			}
+			fh, err := os.Open(fn)
 			if err != nil {
 				return err
 			}
