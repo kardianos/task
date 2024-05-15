@@ -30,10 +30,11 @@ func (f ActionFunc) Run(ctx context.Context, st *State, sc Script) error {
 
 // Script is a list of actions. If an action
 type Script interface {
-	Add(a ...Action)
-	AddRollback(a ...Action)
-	RunAction(ctx context.Context, st *State, a Action) error
-	Run(ctx context.Context, st *State, parent Script) error
+	Add(a ...Action)                                          // Add normal actions to the script.
+	Rollback(a ...Action)                                     // Add actions to only  be run on rollback.
+	Defer(a ...Action)                                        // Add actions to be run at the end, both on error and on normal run.
+	RunAction(ctx context.Context, st *State, a Action) error // Run a single action on the script.
+	Run(ctx context.Context, st *State, parent Script) error  // Run current script under givent state.
 }
 
 // Run is the entry point for actions. It is a short-cut
@@ -62,12 +63,38 @@ func (sc *script) Add(a ...Action) {
 	sc.list = append(sc.list, a...)
 }
 
-// AddRollback adds actions to be done on failure.
-func (sc *script) AddRollback(a ...Action) {
+// Rollback adds actions to be done on failure.
+func (sc *script) Rollback(a ...Action) {
 	if sc.rollback == nil {
 		sc.rollback = &script{}
 	}
 	sc.rollback.Add(a...)
+}
+
+// Defer executes the given actions both in the event of a rollback or
+// for normal execution.
+func (sc *script) Defer(a ...Action) {
+	if sc.rollback == nil {
+		sc.rollback = &script{}
+	}
+	sc.rollback.Add(a...)
+	sc.Add(a...)
+}
+
+// Add rollback actions to the current script.
+func Rollback(a ...Action) Action {
+	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		sc.Rollback(a...)
+		return nil
+	})
+}
+
+// Add defered actions to the current script.
+func Defer(a ...Action) Action {
+	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		sc.Defer(a...)
+		return nil
+	})
 }
 
 // Branch represents a branch condition used in Switch.
@@ -288,7 +315,7 @@ func (sc *script) Run(ctx context.Context, st *State, parent Script) error {
 // are only executed on failure under non-Continue policies.
 func AddRollback(a ...Action) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		sc.AddRollback(a...)
+		sc.Rollback(a...)
 		return nil
 	})
 }

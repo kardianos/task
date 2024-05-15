@@ -234,7 +234,7 @@ func OpenFile(filename string, file any) Action {
 			if err != nil {
 				return err
 			}
-			sc.AddRollback(CloseFile(fh))
+			sc.Rollback(CloseFile(fh))
 
 			st.Set(f, fh)
 			return nil
@@ -246,7 +246,7 @@ func OpenFile(filename string, file any) Action {
 			if err != nil {
 				return err
 			}
-			sc.AddRollback(CloseFile(fh))
+			sc.Rollback(CloseFile(fh))
 
 			*f = fh
 			return nil
