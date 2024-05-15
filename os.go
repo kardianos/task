@@ -57,9 +57,13 @@ func ExpandEnv(text any, st *State) string {
 			panic(fmt.Errorf("knows VAR and string, unsupported type %#v", v))
 		case string:
 			stringText = v
+		case *string:
+			stringText = *v
 		}
 	case string:
 		stringText = v
+	case *string:
+		stringText = *v
 	}
 	return os.Expand(stringText, func(key string) string {
 		if st.bucket != nil {
@@ -67,6 +71,8 @@ func ExpandEnv(text any, st *State) string {
 				switch x := v.(type) {
 				case string:
 					return x
+				case *string:
+					return *x
 				case nil:
 					// Nothing.
 				default:
