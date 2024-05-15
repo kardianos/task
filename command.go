@@ -32,12 +32,13 @@ type Command struct {
 // Flag represents values that may be set on comments.
 // Values will be mapped to State bucket values.
 type Flag struct {
-	Name    string // Name of the flag.
-	ENV     string // Optional env var to read from if flag not present.
-	Usage   string
-	Value   any
-	Default any
-	Type    FlagType
+	Name     string // Name of the flag.
+	ENV      string // Optional env var to read from if flag not present.
+	Usage    string
+	Value    any
+	Default  any
+	Type     FlagType
+	Validate func(v any) error
 }
 
 // FlagType is set in Flag and determins how the value is parsed.
@@ -183,22 +184,23 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 	if fromENV {
 		fs.env = true
 	}
+	var setv any
 	switch fl.Type {
 	default:
 		return fmt.Errorf("unknown flag type %v", fl.Type)
 	case FlagAuto:
-		st.Set(fl.Name, vs)
+		setv = vs
 	case FlagString:
 		if x, ok := fl.Value.(*string); ok {
 			*x = vs
 		}
-		st.Set(fl.Name, vs)
+		setv = vs
 	case FlagBool:
 		if vs == "" {
 			if x, ok := fl.Value.(*bool); ok {
 				*x = true
 			}
-			st.Set(fl.Name, true)
+			setv = true
 		} else {
 			v, err := strconv.ParseBool(vs)
 			if err != nil {
@@ -207,7 +209,7 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 			if x, ok := fl.Value.(*bool); ok {
 				*x = v
 			}
-			st.Set(fl.Name, v)
+			setv = v
 		}
 	case FlagInt64:
 		v, err := strconv.ParseInt(vs, 10, 64)
@@ -222,7 +224,7 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 		case *int64:
 			*x = int64(v)
 		}
-		st.Set(fl.Name, v)
+		setv = v
 	case FlagFloat64:
 		v, err := strconv.ParseFloat(vs, 64)
 		if err != nil {
@@ -234,7 +236,7 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 		case *float64:
 			*x = float64(v)
 		}
-		st.Set(fl.Name, v)
+		setv = v
 	case FlagDuration:
 		v, err := time.ParseDuration(vs)
 		if err != nil {
@@ -244,7 +246,14 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 		case *time.Duration:
 			*x = v
 		}
-		st.Set(fl.Name, v)
+		setv = v
+	}
+	st.Set(fl.Name, setv)
+	if fl.Validate != nil {
+		err := fl.Validate(setv)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fl.Name, err)
+		}
 	}
 	return nil
 }
