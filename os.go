@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,12 +30,12 @@ func Env(env ...string) Action {
 			env[i] = ExpandEnv(e, st)
 		}
 		for _, e := range env {
-			ss := strings.SplitN(e, "=", 2)
-			if len(ss) != 2 {
-				delete(st.Env, ss[0])
+			k, v, ok := strings.Cut(e, "=")
+			if !ok {
+				delete(st.Env, k)
 				continue
 			}
-			st.Env[ss[0]] = ss[1]
+			st.Env[k] = v
 		}
 		return nil
 	})
@@ -65,53 +66,94 @@ func ExpandEnv(s string, st *State) string {
 // ExecFunc is the standard executable function type.
 type ExecFunc func(executable string, args ...string) Action
 
-// Exec runs an executable. Sets the "stdout" bucket variable as a []byte.
+// Exec runs an executable.
 func Exec(executable string, args ...string) Action {
-	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		executable = ExpandEnv(executable, st)
-		for i, a := range args {
-			args[i] = ExpandEnv(a, st)
-		}
-		cmd := exec.CommandContext(ctx, executable, args...)
-		envList := make([]string, 0, len(st.Env))
-		for key, value := range st.Env {
-			envList = append(envList, key+"="+value)
-		}
-		cmd.Env = envList
-		cmd.Dir = st.Dir
-		stdin, _ := st.Default("stdin", []byte{}).([]byte)
-		if len(stdin) > 0 {
-			cmd.Stdin = bytes.NewReader(stdin)
-		}
-		out, err := cmd.Output()
-		st.Set("stdout", out)
-		if err != nil {
-			st.Set("success", false)
-			if ec, ok := err.(*exec.ExitError); ok {
-				return fmt.Errorf("%s %q failed: %v\n%s", executable, args, err, ec.Stderr)
+	return ExecStdin(nil, executable, args...)
+}
+
+func outputSetup(name string, std any) (func(st *State) io.Writer, func(st *State)) {
+	switch s := std.(type) {
+	default:
+		panic(fmt.Sprintf("%s must be one of: string (state name of []byte), io.Writer, *[]byte", name))
+	case string:
+		buf := &bytes.Buffer{}
+		return func(st *State) io.Writer {
+				return buf
+			}, func(st *State) {
+				st.Set(s, buf.Bytes())
 			}
-			return err
-		}
-		st.Set("success", true)
-		return nil
+	case io.Writer:
+		return func(st *State) io.Writer {
+				return s
+			}, func(st *State) {
+			}
+	case *[]byte:
+		buf := &bytes.Buffer{}
+		return func(st *State) io.Writer {
+				return &bytes.Buffer{}
+			}, func(st *State) {
+				*s = buf.Bytes()
+			}
+	}
+}
+
+func WithStdOutErr(stdout, stderr any, childScript Script) Action {
+	outPre, outPost := outputSetup("stdout", stdout)
+	errPre, errPost := outputSetup("stderr", stdout)
+	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		oldStdout, oldStderr := st.Stdout, st.Stderr
+		st.Stdout = outPre(st)
+		st.Stderr = errPre(st)
+		err := childScript.Run(ctx, st, sc)
+		outPost(st)
+		errPost(st)
+		st.Stdout, st.Stderr = oldStdout, oldStderr
+		return err
 	})
 }
 
-// Pipe sets stdin to the value of stdout. The stdout is removed.
-var Pipe = ActionFunc(pipe)
-
-func pipe(ctx context.Context, st *State, sc Script) error {
-	stdin := []byte{}
-	if stdout, is := st.Default("stdout", []byte{}).([]byte); is {
-		stdin = stdout
-	}
-	st.Set("stdin", stdin)
-	st.Delete("stdout")
-	return nil
+func WithStdCombined(std any, childScript Script) Action {
+	outPre, outPost := outputSetup("std", std)
+	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+		oldStdout, oldStderr := st.Stdout, st.Stderr
+		w := outPre(st)
+		st.Stdout = w
+		st.Stderr = w
+		err := childScript.Run(ctx, st, sc)
+		outPost(st)
+		st.Stdout, st.Stderr = oldStdout, oldStderr
+		return err
+	})
 }
 
-// ExecStreamOut runs an executable but streams the output to stderr and stdout.
-func ExecStreamOut(executable string, args ...string) Action {
+// ExecStdin runs an executable and streams the output to stderr and stdout.
+// The stdin takes one of: nil, "string (state variable to []byte data), []byte, or io.Reader.
+func ExecStdin(stdin any, executable string, args ...string) Action {
+	var stdinReader func(st *State) io.Reader
+	switch si := stdin.(type) {
+	default:
+		panic("stdin takes on of: nil, string (state variable to []byte), []byte, or io.Reader")
+	case nil:
+		stdinReader = func(st *State) io.Reader {
+			return nil
+		}
+	case string:
+		stdinReader = func(st *State) io.Reader {
+			stdin, _ := st.Default(si, []byte{}).([]byte)
+			if len(stdin) > 0 {
+				return bytes.NewReader(stdin)
+			}
+			return nil
+		}
+	case []byte:
+		stdinReader = func(st *State) io.Reader {
+			return bytes.NewReader(si)
+		}
+	case io.Reader:
+		stdinReader = func(_ *State) io.Reader {
+			return si
+		}
+	}
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		executable = ExpandEnv(executable, st)
 		for i, a := range args {
@@ -124,44 +166,92 @@ func ExecStreamOut(executable string, args ...string) Action {
 		}
 		cmd.Env = envList
 		cmd.Dir = st.Dir
-		stdin, _ := st.Default("stdin", []byte{}).([]byte)
-		if len(stdin) > 0 {
-			cmd.Stdin = bytes.NewReader(stdin)
-		}
+		cmd.Stdin = stdinReader(st)
 		cmd.Stdout = st.Stdout
 		cmd.Stderr = st.Stderr
 		err := cmd.Run()
 		if err != nil {
-			st.Set("success", false)
 			if ec, ok := err.(*exec.ExitError); ok {
 				return fmt.Errorf("%s %q failed: %v\n%s", executable, args, err, ec.Stderr)
 			}
 			return err
 		}
-		st.Set("success", true)
 		return nil
 	})
 }
 
-// WriteFileStdout writes the given file from the "stdout" bucket variable assuming it is a []byte.
-func WriteFileStdout(filename string, mode os.FileMode) Action {
-	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		filename = ExpandEnv(filename, st)
-		return os.WriteFile(st.Filepath(filename), st.Default("stdout", []byte{}).([]byte), mode)
-	})
+// WriteFile writes the given file from the input.
+// Input may be a string giving the variable name of the []byte, an actual []byte, or an io.Reader.
+func WriteFile(filename string, perm os.FileMode, input any) Action {
+	switch i := input.(type) {
+	default:
+		panic("input must be one of: string ([]byte state variable name), []byte (file data), io.Reader (file data)")
+	case string:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			return os.WriteFile(st.Filepath(filename), st.Default(i, []byte{}).([]byte), perm)
+		})
+	case []byte:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			return os.WriteFile(st.Filepath(filename), i, perm)
+		})
+	case io.Reader:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			f, err := os.OpenFile(st.Filepath(filename), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			_, err = io.Copy(f, i)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	}
 }
 
-// ReadFileStdin reads the given file into the stdin bucket variable as a []byte.
-func ReadFileStdin(filename string, mode os.FileMode) Action {
-	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
-		filename = ExpandEnv(filename, st)
-		b, err := os.ReadFile(st.Filepath(filename))
-		if err != nil {
-			return err
-		}
-		st.Set("stdin", b)
-		return nil
-	})
+// ReadFile reads the given file into the stdin bucket variable as a []byte.
+func ReadFile(filename string, output any) Action {
+	switch o := output.(type) {
+	default:
+		panic("output must be one of: string ([]byte state variable name), *[]byte (file data), io.Writer (file data)")
+	case string:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			b, err := os.ReadFile(st.Filepath(filename))
+			if err != nil {
+				return err
+			}
+			st.Set(o, b)
+			return nil
+		})
+	case *[]byte:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			b, err := os.ReadFile(st.Filepath(filename))
+			if err != nil {
+				return err
+			}
+			*o = b
+			return nil
+		})
+	case io.Writer:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			f, err := os.Open(st.Filepath(filename))
+			if err != nil {
+				return err
+			}
+			_, err = io.Copy(o, f)
+			if err != nil {
+				return err
+			}
+			return nil
+		})
+	}
 }
 
 // Delete file.

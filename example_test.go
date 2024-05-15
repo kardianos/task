@@ -30,16 +30,16 @@ func ExampleCommand() {
 			{Name: "f3", Usage: "set the current f3", Default: "fhg", ENV: "CMDER_F3"},
 		},
 		Commands: []*task.Command{
-			{Name: "run1", Usage: "run the first one here", Action: task.ScriptAdd(
-				task.ExecStreamOut("ps", "-A"),
-				task.ExecStreamOut("ls", "-la"),
+			{Name: "run1", Usage: "run the first one here", Action: task.NewScript(
+				task.ExecStdin("ps", "-A"),
+				task.ExecStdin("ls", "-la"),
 			)},
 			{
 				Name: "run2", Usage: "run the second one here",
 				Flags: []*task.Flag{
 					{Name: "tf", Default: false, Type: task.FlagBool},
 				},
-				Action: task.ScriptAdd(
+				Action: task.NewScript(
 					showVar("f1"),
 					showVar("f2"),
 					showVar("f3"),
@@ -101,7 +101,7 @@ func ExampleCommand_Flags() {
 		Commands: []*task.Command{
 			{Name: "run1", Usage: "run the first one here", Commands: []*task.Command{
 				{Name: "run1b"},
-			}, Action: task.ScriptAdd(
+			}, Action: task.NewScript(
 				showVar("f1"),
 				showVar("args"),
 			)},
@@ -110,7 +110,7 @@ func ExampleCommand_Flags() {
 				Flags: []*task.Flag{
 					{Name: "tf", Default: false, Type: task.FlagBool},
 				},
-				Action: task.ScriptAdd(
+				Action: task.NewScript(
 					showVar("f1"),
 					showVar("args"),
 				),

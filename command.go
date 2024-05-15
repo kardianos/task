@@ -35,7 +35,8 @@ type Flag struct {
 	Name    string // Name of the flag.
 	ENV     string // Optional env var to read from if flag not present.
 	Usage   string
-	Default interface{}
+	Value   any
+	Default any
 	Type    FlagType
 }
 
@@ -68,64 +69,104 @@ type flagStatus struct {
 	env  bool
 }
 
+func flagType(v any) FlagType {
+	switch v.(type) {
+	default:
+		return FlagAuto
+	case string, *string:
+		return FlagString
+	case bool, *bool:
+		return FlagBool
+	case int64, *int64:
+		return FlagInt64
+	case int32, *int32:
+		return FlagInt64
+	case int, *int:
+		return FlagInt64
+	case float64, *float64:
+		return FlagFloat64
+	case float32, *float32:
+		return FlagFloat64
+	case time.Duration, *time.Duration:
+		return FlagDuration
+	}
+}
+
 func (fs *flagStatus) init() error {
 	fl := fs.flag
-	if fl.Default == nil {
-		return nil
-	}
 	// If a default value is set, automatically set the flag type.
-	if fl.Type == FlagAuto {
-		switch fl.Default.(type) {
-		case string:
-			fl.Type = FlagString
-		case bool:
-			fl.Type = FlagBool
-		case int64:
-			fl.Type = FlagInt64
-		case int32:
-			fl.Type = FlagInt64
-		case int:
-			fl.Type = FlagInt64
-		case float64:
-			fl.Type = FlagFloat64
-		case float32:
-			fl.Type = FlagFloat64
-		case time.Duration:
-			fl.Type = FlagDuration
+	if fl.Type == FlagAuto && fl.Value != nil {
+		fl.Type = flagType(fl.Value)
+	}
+	if fl.Type == FlagAuto && fl.Default != nil {
+		fl.Type = flagType(fl.Default)
+	}
+	if fl.Default != nil {
+		var ok bool
+		switch fl.Type {
+		default:
+			return fmt.Errorf("unknown flag type %v", fl.Type)
+		case FlagString:
+			_, ok = fl.Default.(string)
+		case FlagBool:
+			_, ok = fl.Default.(bool)
+		case FlagInt64:
+			switch v := fl.Default.(type) {
+			case int32:
+				fl.Default = int64(v)
+				ok = true
+			case int:
+				fl.Default = int64(v)
+				ok = true
+			case int64:
+				ok = true
+			}
+		case FlagFloat64:
+			switch v := fl.Default.(type) {
+			case float32:
+				fl.Default = float64(v)
+				ok = true
+			case float64:
+				ok = true
+			}
+		case FlagDuration:
+			_, ok = fl.Default.(time.Duration)
+		}
+		if !ok {
+			return fmt.Errorf("invalid default flag value %[1]v (%[1]T) for -%[2]s", fl.Default, fl.Name)
 		}
 	}
-	var ok bool
-	switch fl.Type {
-	default:
-		return fmt.Errorf("unknown flag type %v", fl.Type)
-	case FlagString:
-		_, ok = fl.Default.(string)
-	case FlagBool:
-		_, ok = fl.Default.(bool)
-	case FlagInt64:
-		switch v := fl.Default.(type) {
-		case int32:
-			fl.Default = int64(v)
-			ok = true
-		case int:
-			fl.Default = int64(v)
-			ok = true
-		case int64:
-			ok = true
+	if fl.Value != nil {
+		var ok bool
+		switch fl.Type {
+		default:
+			return fmt.Errorf("unknown flag type %v", fl.Type)
+		case FlagString:
+			_, ok = fl.Value.(*string)
+		case FlagBool:
+			_, ok = fl.Value.(*bool)
+		case FlagInt64:
+			switch fl.Value.(type) {
+			case *int32:
+				ok = true
+			case *int:
+				ok = true
+			case *int64:
+				ok = true
+			}
+		case FlagFloat64:
+			switch fl.Value.(type) {
+			case *float32:
+				ok = true
+			case *float64:
+				ok = true
+			}
+		case FlagDuration:
+			_, ok = fl.Default.(*time.Duration)
 		}
-	case FlagFloat64:
-		switch v := fl.Default.(type) {
-		case float32:
-			fl.Default = float64(v)
-			ok = true
-		case float64:
-			ok = true
+		if !ok {
+			return fmt.Errorf("invalid default flag value %[1]v (%[1]T) for -%[2]s", fl.Default, fl.Name)
 		}
-	case FlagDuration:
-		_, ok = fl.Default.(time.Duration)
-	}
-	if !ok {
-		return fmt.Errorf("invalid default flag value %[1]v (%[1]T) for -%[2]s", fl.Default, fl.Name)
 	}
 	return nil
 }
@@ -145,15 +186,26 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 	switch fl.Type {
 	default:
 		return fmt.Errorf("unknown flag type %v", fl.Type)
-	case FlagString, FlagAuto:
+	case FlagAuto:
+		st.Set(fl.Name, vs)
+	case FlagString:
+		if x, ok := fl.Value.(*string); ok {
+			*x = vs
+		}
 		st.Set(fl.Name, vs)
 	case FlagBool:
 		if vs == "" {
+			if x, ok := fl.Value.(*bool); ok {
+				*x = true
+			}
 			st.Set(fl.Name, true)
 		} else {
 			v, err := strconv.ParseBool(vs)
 			if err != nil {
 				return err
+			}
+			if x, ok := fl.Value.(*bool); ok {
+				*x = v
 			}
 			st.Set(fl.Name, v)
 		}
@@ -162,17 +214,35 @@ func (fs *flagStatus) set(st *State, vs string, fromENV bool) error {
 		if err != nil {
 			return err
 		}
+		switch x := fl.Value.(type) {
+		case *int32:
+			*x = int32(v)
+		case *int:
+			*x = int(v)
+		case *int64:
+			*x = int64(v)
+		}
 		st.Set(fl.Name, v)
 	case FlagFloat64:
 		v, err := strconv.ParseFloat(vs, 64)
 		if err != nil {
 			return err
 		}
+		switch x := fl.Value.(type) {
+		case *float32:
+			*x = float32(v)
+		case *float64:
+			*x = float64(v)
+		}
 		st.Set(fl.Name, v)
 	case FlagDuration:
 		v, err := time.ParseDuration(vs)
 		if err != nil {
 			return err
+		}
+		switch x := fl.Value.(type) {
+		case *time.Duration:
+			*x = v
 		}
 		st.Set(fl.Name, v)
 	}

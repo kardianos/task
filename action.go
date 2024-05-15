@@ -39,7 +39,7 @@ type Script interface {
 // Run is the entry point for actions. It is a short-cut
 // for ScriptAdd and Run.
 func Run(ctx context.Context, st *State, a Action) error {
-	sc := ScriptAdd(a)
+	sc := NewScript(a)
 	return sc.Run(ctx, st, nil)
 }
 
@@ -50,8 +50,8 @@ type script struct {
 	rollback *script
 }
 
-// ScriptAdd creates a script and appends the given actions to it.
-func ScriptAdd(a ...Action) Script {
+// NewScript creates a script and appends the given actions to it.
+func NewScript(a ...Action) Script {
 	sc := &script{}
 	sc.list = append(sc.list, a...)
 	return sc
@@ -120,10 +120,15 @@ type State struct {
 	Branch Branch
 	Policy Policy
 
-	ErrorLogger func(err error)
-	MsgLogger   func(msg string)
+	ErrorLogger func(err error)  // Logger to use when Error is called.
+	MsgLogger   func(msg string) // Logger to use when Log or Logf is called.
 
 	bucket map[string]interface{}
+}
+
+// Values of the state.
+func (st *State) Values() map[string]interface{} {
+	return st.bucket
 }
 
 // Environ calls os.Environ and maps it to key value pairs.
@@ -306,11 +311,11 @@ func Switch(f Action, sw map[Branch]Action) Action {
 }
 
 // WithPolicy sets the state policy for a single action.
-func WithPolicy(p Policy, a Action) Action {
+func WithPolicy(p Policy, childScript Script) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		orig := st.Policy
 		st.Policy = p
-		err := sc.RunAction(ctx, st, a)
+		err := childScript.Run(ctx, st, sc)
 		st.Policy = orig
 		return err
 	})
