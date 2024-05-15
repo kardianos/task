@@ -81,7 +81,7 @@ func (sc *script) Defer(a ...Action) {
 	sc.Add(a...)
 }
 
-// Add rollback actions to the current script.
+// Rollback adds actions to the current rollback script.
 func Rollback(a ...Action) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		sc.Rollback(a...)
@@ -89,7 +89,7 @@ func Rollback(a ...Action) Action {
 	})
 }
 
-// Add defered actions to the current script.
+// Defer actions to the current end of the script. Always execute on error or success.
 func Defer(a ...Action) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		sc.Defer(a...)
