@@ -35,6 +35,7 @@ type Flag struct {
 	Name     string // Name of the flag.
 	ENV      string // Optional env var to read from if flag not present.
 	Usage    string
+	Required bool // Required flag, will error if not set.
 	Value    any
 	Default  any
 	Type     FlagType
@@ -361,6 +362,9 @@ func (c *Command) Exec(args []string) Action {
 				continue
 			}
 			fs.setDefault(st)
+			if fs.flag.Required {
+				return c.helpError("flag %q required", fs.flag.Name)
+			}
 		}
 		if nextFlag != nil {
 			return fmt.Errorf("expected value after flag %q", nextFlag.flag.Name)
@@ -396,6 +400,9 @@ func (c *Command) helpError(f string, v ...interface{}) error {
 	for _, fl := range c.Flags {
 		msg.WriteString("\t")
 		msg.WriteRune('-')
+		if fl.Required {
+			msg.WriteString("*")
+		}
 		msg.WriteString(fl.Name)
 		if len(fl.ENV) > 0 {
 			msg.WriteString(" [")
