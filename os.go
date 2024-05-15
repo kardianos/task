@@ -74,7 +74,12 @@ func Exec(executable string, args ...string) Action {
 func outputSetup(name string, std any) (func(st *State) io.Writer, func(st *State)) {
 	switch s := std.(type) {
 	default:
-		panic(fmt.Sprintf("%s must be one of: string (state name of []byte), io.Writer, *[]byte", name))
+		panic(fmt.Sprintf("%s must be one of: nil, string (state name of []byte), io.Writer, *[]byte", name))
+	case nil:
+		return func(st *State) io.Writer {
+				return nil
+			}, func(st *State) {
+			}
 	case string:
 		buf := &bytes.Buffer{}
 		return func(st *State) io.Writer {
@@ -97,6 +102,8 @@ func outputSetup(name string, std any) (func(st *State) io.Writer, func(st *Stat
 	}
 }
 
+// WithStdOutErr runs the child script using adjusted stdout and stderr outputs.
+// stdout and stderr may be nil, string (state name stored as []byte), io.Writer, or *[]byte.
 func WithStdOutErr(stdout, stderr any, childScript Script) Action {
 	outPre, outPost := outputSetup("stdout", stdout)
 	errPre, errPost := outputSetup("stderr", stdout)
@@ -112,6 +119,8 @@ func WithStdOutErr(stdout, stderr any, childScript Script) Action {
 	})
 }
 
+// WithStdCombined runs the child script using adjusted stdout and stderr outputs.
+// std may be nil, string (state name stored as []byte), io.Writer, or *[]byte.
 func WithStdCombined(std any, childScript Script) Action {
 	outPre, outPost := outputSetup("std", std)
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
@@ -209,6 +218,63 @@ func WriteFile(filename string, perm os.FileMode, input any) Action {
 				return err
 			}
 			return nil
+		})
+	}
+}
+
+// OpenFile opens the filename and stores the file handle in file, either as in a state name (string) or as a *io.Closer.
+func OpenFile(filename string, file any) Action {
+	switch f := file.(type) {
+	default:
+		panic("file must be one of: string (state variable name), *io.Closer (file handle)")
+	case string:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			fh, err := os.Open(st.Filepath(filename))
+			if err != nil {
+				return err
+			}
+			sc.AddRollback(CloseFile(fh))
+
+			st.Set(f, fh)
+			return nil
+		})
+	case *io.Closer:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			filename = ExpandEnv(filename, st)
+			fh, err := os.Open(st.Filepath(filename))
+			if err != nil {
+				return err
+			}
+			sc.AddRollback(CloseFile(fh))
+
+			*f = fh
+			return nil
+		})
+	}
+}
+
+// Close the file. File may be a string (state name) or io.Closer.
+func CloseFile(file any) Action {
+	switch f := file.(type) {
+	default:
+		panic("file must be one of: string (state variable name), io.Closer (file handle)")
+	case string:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			fh, ok := st.Get(f).(io.Closer)
+			if !ok {
+				return fmt.Errorf("state name %q is not an io.Closer, is %#v", f, fh)
+			}
+			st.Delete(f)
+
+			return fh.Close()
+		})
+	case io.Closer:
+		return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
+			if f == nil {
+				return nil
+			}
+			return f.Close()
 		})
 	}
 }
