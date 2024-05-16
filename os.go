@@ -91,7 +91,7 @@ type VAR string
 func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer, func(st *State)) {
 	switch s := std.(type) {
 	default:
-		panic(fmt.Sprintf("%s must be one of: nil, VAR, io.Writer, *[]byte", name))
+		panic(fmt.Sprintf("%s must be one of: nil, VAR, io.Writer, *[]byte, *string; got %T", name, s))
 	case nil:
 		return func(st *State, def io.Writer) io.Writer {
 				return def
@@ -112,23 +112,30 @@ func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer
 	case *[]byte:
 		buf := &bytes.Buffer{}
 		return func(st *State, def io.Writer) io.Writer {
-				return &bytes.Buffer{}
+				return buf
 			}, func(st *State) {
 				*s = buf.Bytes()
+			}
+	case *string:
+		buf := &bytes.Buffer{}
+		return func(st *State, def io.Writer) io.Writer {
+				return buf
+			}, func(st *State) {
+				*s = buf.String()
 			}
 	}
 }
 
 // WithStdOutErr runs the child script using adjusted stdout and stderr outputs.
-// stdout and stderr may be nil, VAR (state name stored as []byte), io.Writer, or *[]byte.
-func WithStdOutErr(stdout, stderr any, childScript Script) Action {
+// stdout and stderr may be nil, VAR (state name stored as []byte), io.Writer, *string, or *[]byte.
+func WithStdOutErr(stdout, stderr any, a Action) Action {
 	outPre, outPost := outputSetup("stdout", stdout)
 	errPre, errPost := outputSetup("stderr", stderr)
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		oldStdout, oldStderr := st.Stdout, st.Stderr
 		st.Stdout = outPre(st, oldStdout)
 		st.Stderr = errPre(st, oldStderr)
-		err := childScript.Run(ctx, st, sc)
+		err := sc.RunAction(ctx, st, a)
 		outPost(st)
 		errPost(st)
 		st.Stdout, st.Stderr = oldStdout, oldStderr
@@ -138,7 +145,7 @@ func WithStdOutErr(stdout, stderr any, childScript Script) Action {
 
 // WithStdCombined runs the child script using adjusted stdout and stderr outputs.
 // std may be nil, string (state name stored as []byte), io.Writer, or *[]byte.
-func WithStdCombined(std any, childScript Script) Action {
+func WithStdCombined(std any, a Action) Action {
 	outPre, outPost := outputSetup("std", std)
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		oldStdout, oldStderr := st.Stdout, st.Stderr
@@ -147,7 +154,7 @@ func WithStdCombined(std any, childScript Script) Action {
 			st.Stdout = w
 			st.Stderr = w
 		}
-		err := childScript.Run(ctx, st, sc)
+		err := sc.RunAction(ctx, st, a)
 		outPost(st)
 		st.Stdout, st.Stderr = oldStdout, oldStderr
 		return err

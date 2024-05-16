@@ -338,11 +338,11 @@ func Switch(f Action, sw map[Branch]Action) Action {
 }
 
 // WithPolicy sets the state policy for a single action.
-func WithPolicy(p Policy, childScript Script) Action {
+func WithPolicy(p Policy, a Action) Action {
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		orig := st.Policy
 		st.Policy = p
-		err := childScript.Run(ctx, st, sc)
+		err := sc.RunAction(ctx, st, a)
 		st.Policy = orig
 		return err
 	})
