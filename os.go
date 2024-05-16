@@ -59,11 +59,19 @@ func ExpandEnv(text any, st *State) string {
 			stringText = v
 		case *string:
 			stringText = *v
+		case []byte:
+			stringText = string(v)
+		case *[]byte:
+			stringText = string(*v)
 		}
 	case string:
 		stringText = v
 	case *string:
 		stringText = *v
+	case []byte:
+		stringText = string(v)
+	case *[]byte:
+		stringText = string(*v)
 	}
 	return os.Expand(stringText, func(key string) string {
 		if st.bucket != nil {
@@ -88,7 +96,7 @@ func ExpandEnv(text any, st *State) string {
 // When passed to a function, resolves to the state variable name.
 type VAR string
 
-func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer, func(st *State)) {
+func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer, postStdWriteFunc) {
 	switch s := std.(type) {
 	default:
 		panic(fmt.Sprintf("%s must be one of: nil, VAR, io.Writer, *[]byte, *string; got %T", name, s))
@@ -103,6 +111,7 @@ func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer
 				return buf
 			}, func(st *State) {
 				st.Set(string(s), buf.Bytes())
+				buf.Reset()
 			}
 	case io.Writer:
 		return func(st *State, def io.Writer) io.Writer {
@@ -115,6 +124,7 @@ func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer
 				return buf
 			}, func(st *State) {
 				*s = buf.Bytes()
+				buf.Reset()
 			}
 	case *string:
 		buf := &bytes.Buffer{}
@@ -122,22 +132,37 @@ func outputSetup(name string, std any) (func(st *State, def io.Writer) io.Writer
 				return buf
 			}, func(st *State) {
 				*s = buf.String()
+				buf.Reset()
 			}
 	}
 }
 
-// WithStdOutErr runs the child script using adjusted stdout and stderr outputs.
+const postStdWriteKey = "__post_std_write__"
+
+type postStdWriteFunc func(st *State)
+
+// WithStd runs the child script using adjusted stdout and stderr outputs.
 // stdout and stderr may be nil, VAR (state name stored as []byte), io.Writer, *string, or *[]byte.
-func WithStdOutErr(stdout, stderr any, a Action) Action {
+func WithStd(stdout, stderr any, a Action) Action {
 	outPre, outPost := outputSetup("stdout", stdout)
 	errPre, errPost := outputSetup("stderr", stderr)
 	return ActionFunc(func(ctx context.Context, st *State, sc Script) error {
 		oldStdout, oldStderr := st.Stdout, st.Stderr
 		st.Stdout = outPre(st, oldStdout)
 		st.Stderr = errPre(st, oldStderr)
+
+		prevPost := st.Get(postStdWriteKey)
+		var f postStdWriteFunc = func(st *State) {
+			outPost(st)
+			errPost(st)
+		}
+		st.Set(postStdWriteKey, f)
 		err := sc.RunAction(ctx, st, a)
-		outPost(st)
-		errPost(st)
+		if prevPost == nil {
+			st.Delete(postStdWriteKey)
+		} else {
+			st.Set(postStdWriteKey, prevPost)
+		}
 		st.Stdout, st.Stderr = oldStdout, oldStderr
 		return err
 	})
@@ -154,8 +179,17 @@ func WithStdCombined(std any, a Action) Action {
 			st.Stdout = w
 			st.Stderr = w
 		}
+		prevPost := st.Get(postStdWriteKey)
+		var f postStdWriteFunc = func(st *State) {
+			outPost(st)
+		}
+		st.Set(postStdWriteKey, f)
 		err := sc.RunAction(ctx, st, a)
-		outPost(st)
+		if prevPost == nil {
+			st.Delete(postStdWriteKey)
+		} else {
+			st.Set(postStdWriteKey, prevPost)
+		}
 		st.Stdout, st.Stderr = oldStdout, oldStderr
 		return err
 	})
@@ -217,6 +251,9 @@ func ExecStdin(stdin any, executable any, args ...any) Action {
 		cmd.Stdout = st.Stdout
 		cmd.Stderr = st.Stderr
 		err := cmd.Run()
+		if f, ok := st.Get(postStdWriteKey).(postStdWriteFunc); ok {
+			f(st)
+		}
 		if err != nil {
 			if ec, ok := err.(*exec.ExitError); ok {
 				return fmt.Errorf("%s %q failed: %v\n%s", executable, args, err, ec.Stderr)
